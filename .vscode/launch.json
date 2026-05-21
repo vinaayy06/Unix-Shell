@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "/Users/vinaykumar/Desktop/tech/shell-project-cpp/cpp/src",
+      "program": "/Users/vinaykumar/Desktop/tech/shell-project-cpp/cpp/src/build/Debug/outDebug"
+    }
+  ]
+}
