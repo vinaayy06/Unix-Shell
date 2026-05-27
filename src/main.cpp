@@ -1,54 +1,91 @@
-include <iostream>
-#include <ranges>
-#include <sstream>
+#include <iostream> 
 #include <string>
-#include <unistd.h>
+#include <vector>
+#include <algorithm> 
+#include<sstream> // split string 
+#include<cstdlib>   // reads environment variables from the operating system
+#include<unistd.h> // Checks if executable file exists
+#include <sys/wait.h> // make parent wait for child process
+using namespace std;
 
-int main() {
-  std::cout << std::unitbuf;
-  std::cerr << std::unitbuf;
-  std::string line;
-  std::string command;
+int main()
+{
+  vector<string> built_in;
 
-  while (true) {
-    std::cout << "$ ";
-    std::getline(std::cin, line);
-    std::stringstream ss(line);
-    ss >> command;
-    if (command == "echo") {
-      std::string word;
-      while (ss >> word)
-        std::cout << word << " ";
-      std::cout << std::endl;
-    } else if (command == "exit")
-      break;
-    else if (command == "type") {
-      bool found = false;
-      std::string builtin[3] = {"echo", "exit", "type"};
-      std::string command_to_know;
-      ss >> command_to_know;
-      for (int i = 0; i <= builtin->length(); i++)
-        if (builtin[i] == command_to_know) {
-          std::cout << command_to_know << " is a shell builtin\n";
-          found = true;
-        }
-      if (!found) {
-        std::string path_env = std::getenv("PATH");
-        std::stringstream ss_path(path_env);
-        std::string path;
-        while (std::getline(ss_path, path, ':')) {
-          std::string full_path = path + '/' + command_to_know;
-          if (access(full_path.c_str(), X_OK) == 0) {
-            std::cout << command_to_know << " is " << full_path << std::endl;
-            found = true;
-            break;
-          }
-        }
-      }
-      if (!found) {
-        std::cout << command_to_know << ": not found\n";
-      }
-    } else
-      std::cout << command << ": command not found\n";
+  built_in.push_back("echo");
+  built_in.push_back("exit");
+  built_in.push_back("type");
+
+  cout << unitbuf;
+  cerr << unitbuf;
+  while (true)
+  {
+    cout << "$ ";
+    string input;
+    getline(cin, input);
+    if(input.empty()){
+      continue;
+    }
+   if (input == "exit" || input == "exit 0")
+  {
+    break;
   }
+    else if (input.substr(0, 5) == "echo ")
+    {
+      cout << input.substr(5) << endl;
+    }
+    else if (input.substr(0, 5) == "type ")
+    {
+      string target = input.substr(5);
+      if (find(built_in.begin(), built_in.end(), target) != built_in.end())
+      {
+        cout << target << " is a shell builtin" << endl;
+      }
+      else
+      {
+       bool found = false;
+       char* path_ptr = getenv("PATH");
+       if(path_ptr != nullptr){
+          string path_env(path_ptr);
+          stringstream ss(path_env);   // split the string
+          string path;
+          while(getline(ss,path,':')){
+            string full_path = path + "/" + target;
+            if(access(full_path.c_str(),X_OK) == 0){ // check file exist & execute permission exists
+              cout << target << " is " << full_path << endl;
+              found = true;
+              break;
+            }
+          }
+       }
+        if(!found){
+          cout << target << ": not found" << endl;
+        }
+      }
+    }
+    else
+    {
+      stringstream ss(input);
+      vector<string> commands;
+      string word;
+      while(ss>> word){
+        commands.push_back(word);
+      }
+      pid_t  pid= fork();
+      if(pid == 0){
+        vector<char*> args;
+        for(string& cmd : commands){
+          args.push_back(&cmd[0]);
+        }
+        args.push_back(nullptr);
+        execvp(args[0],args.data());
+        cout << input << ": command not found" << endl;
+        exit(1);
+      }
+      else{
+        waitpid(pid,nullptr,0);
+      }
+    }
+  }
+  return 0;
 }
