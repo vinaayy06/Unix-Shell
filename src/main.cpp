@@ -1,7 +1,7 @@
-#include <iostream> 
-#include <string>
+#include <iostream>  // reading and printing 
+#include <string> 
 #include <vector>
-#include <algorithm> 
+#include <algorithm> // for find 
 #include<sstream> // split string 
 #include<cstdlib>   // reads environment variables from the operating system
 #include<unistd.h> // Checks if executable file exists
@@ -10,9 +10,9 @@ using namespace std;
 
 int main()
 {
-  vector<string> built_in;
+  vector<string> built_in; // create empty vector
 
-  built_in.push_back("echo");
+  built_in.push_back("echo"); // add  values
   built_in.push_back("exit");
   built_in.push_back("type");
 
@@ -23,33 +23,33 @@ int main()
     cout << "$ ";
     string input;
     getline(cin, input);
-    if(input.empty()){
+    if(input.empty()){ //agr enter type krde without typing  so prgm restart loop
       continue;
     }
-   if (input == "exit" || input == "exit 0")
+   if (input == "exit" || input == "exit 0") //  shell stop
   {
     break;
   }
-    else if (input.substr(0, 5) == "echo ")
+    else if (input.substr(0, 5) == "echo ") // check first 5 letter
     {
-      cout << input.substr(5) << endl;
+      cout << input.substr(5) << endl; // 5 k baad cout 
     }
     else if (input.substr(0, 5) == "type ")
     {
       string target = input.substr(5);
-      if (find(built_in.begin(), built_in.end(), target) != built_in.end())
+      if (find(built_in.begin(), built_in.end(), target) != built_in.end()) //  agr result is not end
       {
         cout << target << " is a shell builtin" << endl;
       }
       else
       {
-       bool found = false;
-       char* path_ptr = getenv("PATH");
+       bool found = false; // mtlb abhi tk nhi mila
+       char* path_ptr = getenv("PATH"); // os give  path value
        if(path_ptr != nullptr){
-          string path_env(path_ptr);
+          string path_env(path_ptr); // convert to string
           stringstream ss(path_env);   // split the string
           string path;
-          while(getline(ss,path,':')){
+          while(getline(ss,path,':')){ //Take text from ss until : comes
             string full_path = path + "/" + target;
             if(access(full_path.c_str(),X_OK) == 0){ // check file exist & execute permission exists
               cout << target << " is " << full_path << endl;
@@ -65,25 +65,25 @@ int main()
     }
     else
     {
-      stringstream ss(input);
+      stringstream ss(input); // split the string
       vector<string> commands;
       string word;
       while(ss>> word){
         commands.push_back(word);
       }
-      pid_t  pid= fork();
-      if(pid == 0){
+      pid_t  pid= fork(); // creates two processes
+      if(pid == 0){ // child enters here
         vector<char*> args;
-        for(string& cmd : commands){
-          args.push_back(&cmd[0]);
+        for(string& cmd : commands){  //Convert strings to char*
+          args.push_back(&cmd[0]); // needs NULL to know array ended.
         }
         args.push_back(nullptr);
-        execvp(args[0],args.data());
+        execvp(args[0],args.data()); // run real executable
         cout << input << ": command not found" << endl;
         exit(1);
       }
       else{
-        waitpid(pid,nullptr,0);
+        waitpid(pid,nullptr,0); // Parent shell waits until child finishes.
       }
     }
   }
