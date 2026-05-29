@@ -15,6 +15,8 @@ int main()
   built_in.push_back("echo"); // add  values
   built_in.push_back("exit");
   built_in.push_back("type");
+  built_in.push_back("pwd");
+  built_in.push_back("cd");
 
   cout << unitbuf;
   cerr << unitbuf;
@@ -26,13 +28,32 @@ int main()
     if(input.empty()){ //agr enter type krde without typing  so prgm restart loop
       continue;
     }
-   if (input == "exit" || input == "exit 0") //  shell stop
-  {
-    break;
-  }
+    if (input == "exit" || input == "exit 0") //  shell stop
+    {
+      break;
+    }
     else if (input.substr(0, 5) == "echo ") // check first 5 letter
     {
       cout << input.substr(5) << endl; // 5 k baad cout 
+    }
+    else if(input == "pwd"){
+      char cwd[1024];
+      getcwd(cwd,sizeof(cwd));
+      cout<<cwd<<endl;
+    }
+    else if(input.rfind("cd" , 0) == 0){
+      string directory = input.substr(3);
+      if(directory == "~"){
+        char* home = getenv("HOME");
+        if(home != nullptr){
+          directory = home;
+        }
+      }
+      if(chdir(directory.c_str())!=0){
+          cout << "cd: " << directory
+               << ": No such file or directory" << endl;
+
+      }
     }
     else if (input.substr(0, 5) == "type ")
     {
@@ -86,6 +107,7 @@ int main()
         waitpid(pid,nullptr,0); // Parent shell waits until child finishes.
       }
     }
+
   }
   return 0;
 }
