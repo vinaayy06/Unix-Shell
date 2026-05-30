@@ -8,6 +8,32 @@
 #include <sys/wait.h> // make parent wait for child process
 using namespace std;
 
+vector<string> parseInput(string input){
+  vector<string> result;
+  string current = "";
+  bool inSingleQuote = false;
+  for(char ch : input ){
+    if(ch == '\''){
+      inSingleQuote = !inSingleQuote;
+      continue;  //dont share quote
+    }
+    else if((ch == ' ' || ch == '\t') && !inSingleQuote){
+      if(!current.empty()){
+        result.push_back(current);
+        current.clear();
+      }
+    }
+    else {
+      current += ch;
+    }
+  }
+  if(!current.empty()){
+    result.push_back(current);
+  }
+  return result;
+}
+
+
 int main()
 {
   vector<string> built_in; // create empty vector
@@ -34,7 +60,14 @@ int main()
     }
     else if (input.substr(0, 5) == "echo ") // check first 5 letter
     {
-      cout << input.substr(5) << endl; // 5 k baad cout 
+      vector<string> commands = parseInput(input);
+      for(int i=1;i<commands.size();i++){
+        if(i>1){
+          cout<< " ";
+        }
+        cout<< commands[i];
+      }
+      cout<<endl; 
     }
     else if(input == "pwd"){
       char cwd[1024];
@@ -86,12 +119,7 @@ int main()
     }
     else
     {
-      stringstream ss(input); // split the string
-      vector<string> commands;
-      string word;
-      while(ss>> word){
-        commands.push_back(word);
-      }
+      vector<string> commands = parseInput(input);
       pid_t  pid= fork(); // creates two processes
       if(pid == 0){ // child enters here
         vector<char*> args;
