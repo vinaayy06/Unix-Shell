@@ -12,14 +12,51 @@ vector<string> parseInput(string input){
   vector<string> result;
   string current = "";
   bool inSingleQuote = false;
-  for(char ch : input ){
-    if(ch == '\''){
-      inSingleQuote = !inSingleQuote;
-      continue;  //dont share quote
+  bool inDoubleQuote = false;
+  bool escaped = false;
+  for(int i= 0 ;i<input.size();i++)
+  {
+    char ch = input[i];
+    if(escaped){
+      current += ch;
+      escaped = false;
+      continue;
     }
-    else if((ch == ' ' || ch == '\t') && !inSingleQuote){
+    if(inDoubleQuote){
+      if(ch == '\\' && i+1<input.size()){
+        char next = input[i+1];
+        if(next ==  '"' || next == '\\'){
+          current += next;
+          i++;
+          continue;
+        }
+        current += '\\';
+        current += next;
+        i++;
+        continue;
+      }
+      if(ch == '"'){
+        inDoubleQuote = false;
+        continue;
+      }
+      current += ch;
+      continue;
+    }
+    if(ch == '\\' && !inSingleQuote){
+      escaped = true;
+      continue;
+    }
+    if(ch == '\'' && !inDoubleQuote){
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if(ch == '"' && !inSingleQuote){
+    inDoubleQuote = true;
+    continue;
+    }
+    if((ch == ' ' || ch == '\t')  && !inDoubleQuote&& !inSingleQuote){
       if(!current.empty()){
-        result.push_back(current);
+        result.push_back(current);  
         current.clear();
       }
     }
@@ -74,7 +111,7 @@ int main()
       getcwd(cwd,sizeof(cwd));
       cout<<cwd<<endl;
     }
-    else if(input.rfind("cd" , 0) == 0){
+    else if(input.rfind("cd " , 0) == 0){
       string directory = input.substr(3);
       if(directory == "~"){
         char* home = getenv("HOME");
