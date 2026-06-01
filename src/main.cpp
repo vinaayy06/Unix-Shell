@@ -6,6 +6,8 @@
 #include<cstdlib>   // reads environment variables from the operating system
 #include<unistd.h> // Checks if executable file exists
 #include <sys/wait.h> // make parent wait for child process
+#include<fcntl.h>
+#include<sys/stat.h>
 using namespace std;
 
 vector<string> parseInput(string input){
@@ -95,16 +97,56 @@ int main()
     {
       break;
     }
-    else if (input.substr(0, 5) == "echo ") // check first 5 letter
+    else if (input.rfind("echo ", 0) == 0) // check first 5 letter
     {
       vector<string> commands = parseInput(input);
+      string outputFile = "";
+      string errorFile = "";
+      bool redirect = false;
+      bool errorRedirect = false;
+      for(int i=0;i<commands.size();i++){
+        if(commands[i] == ">" || commands[i] == "1>"){
+          redirect = true;
+          if(i+1< commands.size()){
+            outputFile = commands[i+1];
+          }
+          commands.erase(commands.begin()+i,commands.begin() +i+2);
+          i--;
+        }
+        else if(commands[i] == "2>"){
+          errorRedirect = true;
+          errorFile = commands[i+1];
+          commands.erase(commands.begin()+i,commands.begin()+i+2);
+          i--;
+        }
+      }
+      int oldStdout = -1;
+      if(redirect){
+        oldStdout = dup(STDOUT_FILENO);
+        int fd = open(outputFile.c_str(),O_WRONLY | O_CREAT | O_TRUNC,0644);
+        if(fd == -1){
+          continue;
+        }
+        dup2(fd,STDOUT_FILENO);
+        close(fd);
+      } 
       for(int i=1;i<commands.size();i++){
         if(i>1){
           cout<< " ";
         }
         cout<< commands[i];
       }
-      cout<<endl; 
+      cout<<endl;
+      if(redirect){
+        dup2(oldStdout,STDOUT_FILENO);
+        close(oldStdout);
+      }
+      if(errorRedirect){
+        int fd = open(errorFile.c_str(),O_WRONLY | O_CREAT | O_TRUNC,0644);
+        if(fd != -1){
+          close(fd);
+        }
+      }
     }
     else if(input == "pwd"){
       char cwd[1024];
@@ -125,7 +167,7 @@ int main()
 
       }
     }
-    else if (input.substr(0, 5) == "type ")
+     else if (input.rfind("type ", 0) == 0)
     {
       string target = input.substr(5);
       if (find(built_in.begin(), built_in.end(), target) != built_in.end()) //  agr result is not end
@@ -157,15 +199,54 @@ int main()
     else
     {
       vector<string> commands = parseInput(input);
+      string outputFile = "";
+      string errorfile = "";
+      bool redirect  = false;
+      bool errorRedirect = false;
+      for(int i=0;i<commands.size();i++){
+        if(commands[i] == ">" || commands[i] == "1>"){
+          redirect = true;
+          if(i+1 < commands.size()){
+            outputFile = commands[i+1];
+          }
+          commands.erase(commands.begin()+i,commands.begin() +i+2);
+          i--;
+        }
+        else if(commands[i] == "2>"){
+          errorRedirect = true;
+          errorfile = commands[i+1];
+          commands.erase(commands.begin()+i,commands.begin()+i+2);
+          i--;
+        }
+      }
+      if(commands.empty()){
+        continue;
+      }
       pid_t  pid= fork(); // creates two processes
       if(pid == 0){ // child enters here
+        if(redirect){
+          int fd = open(outputFile.c_str(),O_WRONLY | O_CREAT | O_TRUNC,0644);
+          if(fd == -1){
+            exit(1);
+          }
+          dup2(fd,STDOUT_FILENO);
+          close(fd);
+        }
+        if(errorRedirect){
+          int fd = open(errorfile.c_str(),O_WRONLY | O_CREAT | O_TRUNC,0644);
+          if(fd == -1){
+            exit(1);
+          }
+          dup2(fd,STDERR_FILENO);
+          close(fd);
+        }
         vector<char*> args;
-        for(string& cmd : commands){  //Convert strings to char*
-          args.push_back(&cmd[0]); // needs NULL to know array ended.
+        for(int i=0;i<commands.size();i++){  //Convert strings to char*
+          args.push_back(&commands[i][0]); // needs NULL to know array ended.
         }
         args.push_back(nullptr);
         execvp(args[0],args.data()); // run real executable
-        cout << input << ": command not found" << endl;
+        cerr << input << ": command not found" << endl;
         exit(1);
       }
       else{
