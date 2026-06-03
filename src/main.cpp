@@ -103,14 +103,20 @@ int main()
       string outputFile = "";
       string errorFile = "";
       bool redirect = false;
+      bool appendRedirect = false;
       bool errorRedirect = false;
+      bool errorAppendRedirect = false;
       for(int i=0;i<commands.size();i++){
         if(commands[i] == ">" || commands[i] == "1>"){
           redirect = true;
-          if(i+1< commands.size()){
-            outputFile = commands[i+1];
-          }
+          outputFile = commands[i+1];
           commands.erase(commands.begin()+i,commands.begin() +i+2);
+          i--;
+        }
+        else if(commands[i] == ">>" || commands[i] == "1>>"){
+          appendRedirect = true;
+          outputFile = commands[i+1];
+          commands.erase(commands.begin()+i,commands.begin()+i+2);
           i--;
         }
         else if(commands[i] == "2>"){
@@ -119,11 +125,23 @@ int main()
           commands.erase(commands.begin()+i,commands.begin()+i+2);
           i--;
         }
+        else if(commands[i] == "2>>"){
+          errorAppendRedirect = true;
+          errorFile = commands[i+1];
+          commands.erase(commands.begin()+i,commands.begin()+i+2);
+          i--;
+        }
       }
       int oldStdout = -1;
-      if(redirect){
+      if(redirect || appendRedirect){
         oldStdout = dup(STDOUT_FILENO);
-        int fd = open(outputFile.c_str(),O_WRONLY | O_CREAT | O_TRUNC,0644);
+        int fd;
+        if(appendRedirect){
+          fd = open(outputFile.c_str(),O_WRONLY | O_CREAT | O_APPEND,0644);
+        }
+        else{
+          fd  = open(outputFile.c_str(),O_WRONLY | O_CREAT | O_TRUNC,0644);
+        }
         if(fd == -1){
           continue;
         }
@@ -137,16 +155,25 @@ int main()
         cout<< commands[i];
       }
       cout<<endl;
-      if(redirect){
+      if(redirect || appendRedirect){
         dup2(oldStdout,STDOUT_FILENO);
         close(oldStdout);
       }
-      if(errorRedirect){
-        int fd = open(errorFile.c_str(),O_WRONLY | O_CREAT | O_TRUNC,0644);
-        if(fd != -1){
-          close(fd);
+      if(errorRedirect || errorAppendRedirect){
+        int fd;
+        if(errorAppendRedirect){
+          fd  = open(errorFile.c_str(),O_WRONLY | O_CREAT | O_APPEND,0644);
         }
+        else{
+          fd =  open(errorFile.c_str(),O_WRONLY | O_CREAT | O_TRUNC,0644);
+        }
+        if(fd == -1){
+         exit(1);
+        }
+        dup2(fd,STDERR_FILENO);
+      close(fd);
       }
+
     }
     else if(input == "pwd"){
       char cwd[1024];
@@ -203,19 +230,34 @@ int main()
       string errorfile = "";
       bool redirect  = false;
       bool errorRedirect = false;
+      bool appendRedirect = false;
+      bool errorAppendRedirect = false;
       for(int i=0;i<commands.size();i++){
         if(commands[i] == ">" || commands[i] == "1>"){
-          redirect = true;
-          if(i+1 < commands.size()){
-            outputFile = commands[i+1];
-          }
+          redirect = true; 
+          outputFile = commands[i+1];
           commands.erase(commands.begin()+i,commands.begin() +i+2);
           i--;
+        }
+        else if(commands[i] == ">>" || commands[i] == "1>>"){
+          appendRedirect = true;
+          outputFile = commands[i+1];
+          commands.erase(commands.begin()+i, commands.begin()+i+2);
+          i--;
+
         }
         else if(commands[i] == "2>"){
           errorRedirect = true;
           errorfile = commands[i+1];
           commands.erase(commands.begin()+i,commands.begin()+i+2);
+          i--;
+        }
+        else if(commands[i].rfind("2>>",0) == 0){
+          errorAppendRedirect = true;
+          if(commands[i] == "2>>"){
+            errorfile = commands[i+1];
+            commands.erase(commands.begin()+i,commands.begin()+i+2);
+          }
           i--;
         }
       }
@@ -224,16 +266,28 @@ int main()
       }
       pid_t  pid= fork(); // creates two processes
       if(pid == 0){ // child enters here
-        if(redirect){
-          int fd = open(outputFile.c_str(),O_WRONLY | O_CREAT | O_TRUNC,0644);
+        if(redirect || appendRedirect){
+          int fd;
+          if(appendRedirect){
+            fd = open(outputFile.c_str(),O_WRONLY | O_CREAT | O_APPEND,0644);
+          }
+          else{
+            fd = open(outputFile.c_str(),O_WRONLY | O_CREAT | O_TRUNC,0644);
+          }
           if(fd == -1){
             exit(1);
           }
           dup2(fd,STDOUT_FILENO);
           close(fd);
         }
-        if(errorRedirect){
-          int fd = open(errorfile.c_str(),O_WRONLY | O_CREAT | O_TRUNC,0644);
+        if(errorRedirect || errorAppendRedirect){
+          int fd;
+          if(errorAppendRedirect){
+            fd  = open(errorfile.c_str(), O_WRONLY | O_CREAT | O_APPEND,0644);
+          }
+          else{
+            fd  = open(errorfile.c_str(), O_WRONLY | O_CREAT | O_TRUNC,0644);
+          }
           if(fd == -1){
             exit(1);
           }
