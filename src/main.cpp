@@ -8,6 +8,10 @@
 #include <sys/wait.h> // make parent wait for child process
 #include<fcntl.h>
 #include<sys/stat.h>
+#include <readline/readline.h>
+#include <readline/history.h>
+#include <dirent.h>
+#include <cstring>
 using namespace std;
 
 vector<string> parseInput(string input){
@@ -72,9 +76,114 @@ vector<string> parseInput(string input){
   return result;
 }
 
-
+vector<string> getMatches(string text){
+  vector<string> matches;
+  if(string("echo").rfind(text,0) == 0)
+    matches.push_back("echo");
+  if(string("exit").rfind(text,0) == 0)
+    matches.push_back("exit");
+  char* pathptr  =getenv("PATH");
+  if(pathptr != nullptr){
+    string pathEnv(pathptr);
+    stringstream ss(pathEnv);
+    string dir;
+    while(getline(ss,dir,':')){
+      DIR* dp = opendir(dir.c_str());
+      if(dp == nullptr){
+        continue;
+      }
+      struct dirent* entry;
+      while((entry = readdir(dp)) != nullptr){
+        string filename = entry->d_name;
+        if(filename.rfind(text,0) == 0){
+          string fullPath = dir + "/" +filename;
+          if(access(fullPath.c_str(),X_OK) ==0){
+            matches.push_back(filename);
+          }
+        }
+      } 
+      closedir(dp);
+    }
+  }
+  sort(matches.begin(),matches.end());
+  matches.erase(unique(matches.begin(),matches.end()),matches.end());
+  return matches; 
+}
+char* command_generator(const char* text, int state){
+  static int index;
+  static vector<string> matches;
+  if(state == 0){
+    matches = getMatches(text);
+    index =0;
+  }
+  if(index < matches.size()){  
+    return strdup(matches[index++].c_str());
+  }
+  return nullptr;
+}
+string longestCommonPrefix(const vector<string> &matches){
+  if(matches.empty()) return "";
+  string prefix = matches[0];
+  for(int i=1;i<matches.size();i++){
+    while (matches[i].find(prefix) !=0)
+    {
+      prefix.pop_back();
+      if(prefix.empty())
+        return "";
+    }
+  }
+  return prefix;
+}
+char** my_completion(const char*text, int start, int end){
+  (void)start;
+  (void)end;
+  rl_attempted_completion_over = 1;
+  string prefix = text;
+  vector<string> matches = getMatches(prefix);
+  if(matches.empty()){
+    return nullptr;
+  } 
+  if(matches.size() ==1){
+    rl_completion_append_character = ' ';
+    return rl_completion_matches(text,command_generator);
+  }
+  string lcp = longestCommonPrefix(matches);
+  if(lcp.length()> prefix.length()){
+    rl_line_buffer[0] = '\0';
+    rl_point = 0;
+    rl_end = 0;
+    rl_insert_text(lcp.c_str());
+    rl_redisplay();
+    return nullptr;
+  }
+  static string previousPrefix = "";
+  static int tabPresses = 0;
+  if(previousPrefix == prefix){
+    tabPresses++;
+  }
+  else{
+    previousPrefix = prefix;
+    tabPresses = 1;
+  }
+  if(tabPresses == 1 ){
+    cout << '\a';
+    cout.flush();
+    return nullptr;
+  }
+  cout << '\n';
+  for(string s : matches){
+    cout << s << "  ";
+  }
+  cout<< '\n';
+  rl_on_new_line();
+  rl_redisplay();
+  tabPresses = 0;
+  return nullptr;
+}
 int main()
 {
+  rl_attempted_completion_function = my_completion;
+  rl_completion_append_character = ' ';
   vector<string> built_in; // create empty vector
 
   built_in.push_back("echo"); // add  values
@@ -87,9 +196,15 @@ int main()
   cerr << unitbuf;
   while (true)
   {
-    cout << "$ ";
-    string input;
-    getline(cin, input);
+    char* line  = readline("$ ");
+    if(line  == nullptr){
+      break;
+    }
+    string input(line);
+    if(!input.empty()){
+      add_history(line);
+    }
+    free(line);
     if(input.empty()){ //agr enter type krde without typing  so prgm restart loop
       continue;
     }
