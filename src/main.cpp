@@ -109,18 +109,6 @@ vector<string> getMatches(string text){
   matches.erase(unique(matches.begin(),matches.end()),matches.end());
   return matches; 
 }
-char* command_generator(const char* text, int state){
-  static int index;
-  static vector<string> matches;
-  if(state == 0){
-    matches = getMatches(text);
-    index =0;
-  }
-  if(index < matches.size()){  
-    return strdup(matches[index++].c_str());
-  }
-  return nullptr;
-}
 string longestCommonPrefix(const vector<string> &matches){
   if(matches.empty()) return "";
   string prefix = matches[0];
@@ -134,15 +122,140 @@ string longestCommonPrefix(const vector<string> &matches){
   }
   return prefix;
 }
+char* filename_generator(const char* text, int state) {
+  static vector<string> matches;
+  static int index;
+  if (state == 0) {
+    matches.clear();
+    index = 0;
+    string input(text);
+    string dirPath = ".";
+    string basePath = "";
+    string prefix = input;
+    size_t pos  = input.find_last_of('/');
+    if(pos != string:: npos){
+      dirPath = input.substr(0,pos);
+      if(dirPath.empty())
+        dirPath = "/";
+      prefix = input.substr(pos+1);
+      basePath = input.substr(0,pos+1);
+    }
+    DIR* dp = opendir(dirPath.c_str());
+    if (dp != nullptr) {
+      struct dirent* entry;
+      while ((entry = readdir(dp)) != nullptr) {
+        string name = entry->d_name;
+        if (name.rfind(prefix, 0) == 0) {
+          struct stat st;
+          string fullPath;
+          if(dirPath == ".")
+            fullPath = name;
+          else
+            fullPath = dirPath + "/" + name;
+          if(stat(fullPath.c_str(),&st) ==0 && S_ISDIR(st.st_mode)){
+            matches.push_back(basePath + name + "/"); 
+          }
+          else{
+            matches.push_back(basePath + name);
+          } 
+        }
+      }
+      closedir(dp);
+    }
+    sort(matches.begin(), matches.end());
+  }
+  if (index < matches.size()) {
+    return strdup(matches[index++].c_str());
+  }
+  return nullptr;
+}
+char* command_generator(const char* text, int state){
+  static int index;
+  static vector<string> matches;
+  if(state == 0){
+    matches = getMatches(text);
+    index =0;
+  }
+  if(index < matches.size()){  
+    return strdup(matches[index++].c_str());
+  }
+  return nullptr;
+}
+vector<string> getFileMatches(string input){
+  vector<string> matches;
+  string dirPath = ".";
+  string basePath = "";
+  string prefix = input;
+  size_t pos = input.find_last_of('/');
+  if(pos != string::npos){
+    dirPath = input.substr(0,pos);
+    if(dirPath.empty())
+      dirPath = "/";
+    prefix = input.substr(pos+1);
+    basePath = input.substr(0,pos+1);
+  }
+  DIR* dp = opendir(dirPath.c_str());
+  if(dp){
+    struct dirent* entry;
+    while((entry = readdir(dp)) != nullptr){
+      string name = entry->d_name;
+      if(name == "." || name == "..")
+        continue;
+      if(name.rfind(prefix,0) == 0){
+        struct stat st;
+        string fullPath;
+        if(dirPath == "."){
+          fullPath = name;
+        }
+        else{
+          fullPath = dirPath + "/" + name;
+        }
+        if(stat(fullPath.c_str(), &st) ==0 && S_ISDIR(st.st_mode)){
+          matches.push_back(basePath + name + "/");
+        }
+        else{
+          matches.push_back(basePath + name);
+        }
+      }
+    }
+    closedir(dp);
+  }
+  sort(matches.begin(),matches.end());
+  return matches;
+}
+
 char** my_completion(const char*text, int start, int end){
   (void)start;
   (void)end;
-  rl_attempted_completion_over = 1;
+  if(start > 0){
+    vector<string> files;
+    DIR* dp = opendir(".");
+    if(dp){
+      struct dirent* entry;
+      while((entry = readdir(dp)) != nullptr) {
+        string name = entry->d_name;
+        if(name == "." || name == "..")
+          continue;
+        files.push_back(name);
+      }
+      closedir(dp);
+    }
+    if(files.size() == 1){
+      struct stat st;
+      if(stat(files[0].c_str(),&st) == 0 && S_ISDIR(st.st_mode)){
+        rl_insert_text((files[0] + "/").c_str());
+      }
+      else{
+        rl_insert_text((files[0] + " ").c_str());
+      }
+    }
+    return nullptr;
+  } 
   string prefix = text;
   vector<string> matches = getMatches(prefix);
   if(matches.empty()){
     return nullptr;
-  } 
+  }
   if(matches.size() ==1){
     rl_completion_append_character = ' ';
     return rl_completion_matches(text,command_generator);
