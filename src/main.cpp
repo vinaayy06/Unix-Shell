@@ -12,8 +12,9 @@
 #include <readline/history.h>
 #include <dirent.h>
 #include <cstring>
+#include<map>
 using namespace std;
-
+map<string, string> completions;
 vector<string> parseInput(string input){
   vector<string> result;
   string current = "";
@@ -225,6 +226,52 @@ vector<string> getFileMatches(string input){
 }
 
 char** my_completion(const char*text, int start, int end){
+  string line  = rl_line_buffer;
+  vector<string> args = parseInput(line);
+   vector<string> words = parseInput(line);
+   string command = "";
+  string currentWord = text;
+  string previousWord = "";
+  if(!words.empty())
+  {
+    command = words[0];
+  }
+  if(words.size() >= 2)
+  {
+    previousWord = words[words.size()-2];
+  }
+  if(!args.empty()){
+    auto it = completions.find(args[0]);
+    if(it != completions.end() && start>0){
+      string cmd =
+    "'" + it->second + "' " +
+    "'" + command + "' " +
+    "'" + currentWord + "' " +
+    "'" + previousWord + "'";
+  FILE* pipe = popen(cmd.c_str(), "r");
+      if(pipe){
+        char buffer[1024];
+        if(fgets(buffer,sizeof(buffer),pipe)){
+          string completions = buffer;
+          while (!completions.empty() &&
+                (completions.back() == '\n' ||
+                 completions.back() == '\r'))
+          {
+            completions.pop_back();
+          }
+          if (completions.rfind(currentWord, 0) == 0) 
+          {
+            string suffix = completions.substr(currentWord.size());
+            rl_insert_text(suffix.c_str());
+            rl_insert_text(" ");
+            rl_redisplay();
+}
+        }
+        pclose(pipe);
+      }
+      return nullptr;
+    }
+  }
   (void)start;
   (void)end;
   if(start > 0){
@@ -304,6 +351,7 @@ int main()
   built_in.push_back("type");
   built_in.push_back("pwd");
   built_in.push_back("cd");
+  built_in.push_back("complete");
 
   cout << unitbuf;
   cerr << unitbuf;
@@ -448,6 +496,29 @@ int main()
        }
         if(!found){
           cout << target << ": not found" << endl;
+        }
+      }
+    }
+    else if(input.rfind("complete",0) == 0){
+      vector<string> args = parseInput(input);
+      if(args.size() >= 4 && args[1] == "-C"){
+        string scriptPath = args[2];
+        string command = args[3];
+        completions[command] = scriptPath;
+      }
+      else if(args.size()>=3 && args[1] =="-p"){
+        string command = args[2];
+        auto it = completions.find(command);
+        if(it == completions.end()){
+          cout<<"complete: "<<command
+              <<": no completion specification"<<endl;
+        }
+        else{
+          cout << "complete -C '"
+               << it->second
+               << "' "
+               << command
+               << endl;
         }
       }
     }
