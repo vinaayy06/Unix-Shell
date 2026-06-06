@@ -243,12 +243,16 @@ char** my_completion(const char*text, int start, int end){
   if(!args.empty()){
     auto it = completions.find(args[0]);
     if(it != completions.end() && start>0){
-      string cmd =
-    "'" + it->second + "' " +
-    "'" + command + "' " +
-    "'" + currentWord + "' " +
-    "'" + previousWord + "'";
-  FILE* pipe = popen(cmd.c_str(), "r");
+    string compLine = rl_line_buffer;
+      string compPoint = to_string(rl_point);
+      string cmd =  
+      "COMP_LINE=\"" + compLine + "\" "
+      "COMP_POINT=\"" + compPoint + "\" "
+      "\"" + it->second + "\" "
+      "\"" + command + "\" "
+      "\"" + currentWord + "\" "
+      "\"" + previousWord + "\"";
+      FILE* pipe = popen(cmd.c_str(), "r");
       if(pipe){
         char buffer[1024];
         if(fgets(buffer,sizeof(buffer),pipe)){
