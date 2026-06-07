@@ -280,10 +280,13 @@ char** my_completion(const char*text, int start, int end){
             sort(candidates.begin(), candidates.end());
             if(candidates.size() == 1){
               string completion = candidates[0];
-              
+              rl_delete_text(
+                  rl_point - currentWord.size(),
+                  rl_point
+              );
               rl_point -= currentWord.size();
               rl_insert_text(completion.c_str());
-              rl_insert_text("");
+              rl_insert_text(" ");
               rl_redisplay();
               
             }  
@@ -302,7 +305,7 @@ char** my_completion(const char*text, int start, int end){
               else{
                 cout<<'\n';
                 for(auto &c : candidates){
-                  cout<< c << " "; 
+                  cout<< c << "  "; 
                 }
                 cout << '\n';
                 rl_on_new_line();
@@ -342,16 +345,14 @@ char** my_completion(const char*text, int start, int end){
     return nullptr;
   } 
   string prefix = text;
-  vector<string> matches = getFileMatches(prefix);
+  vector<string> matches = getMatches(prefix);
   if(matches.empty()){
     return nullptr;
   }
   if(matches.size() ==1){
     string suffix  = matches[0].substr(strlen(text));
     rl_insert_text(suffix.c_str());
-    if(matches[0].back() != '/'){
-      rl_insert_text(" ");
-    }
+    rl_insert_text(" ");
     rl_redisplay();
     return nullptr;
   }
@@ -361,6 +362,27 @@ char** my_completion(const char*text, int start, int end){
     rl_insert_text(suffix.c_str());
     rl_redisplay();
     return nullptr;
+  }
+  if(lastWord == currentWord){
+    tabCount++;
+  }
+  else{
+    lastWord = currentWord;
+    tabCount = 1;
+  }
+  if(tabCount == 1){
+    cout<< '\a';
+    cout.flush();
+  }
+  else{
+    cout<<'\n';
+    for(auto&m : matches){
+      cout<< m << " ";
+    }
+    cout<<'\n';
+    rl_on_new_line();
+    rl_redisplay();
+    tabCount = 0;
   }
   return nullptr; 
 }
