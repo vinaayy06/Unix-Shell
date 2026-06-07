@@ -224,12 +224,13 @@ vector<string> getFileMatches(string input){
   sort(matches.begin(),matches.end());
   return matches;
 }
-
+static string lastWord = "";
+static int tabCount = 0;
 char** my_completion(const char*text, int start, int end){
   string line  = rl_line_buffer;
   vector<string> args = parseInput(line);
-   vector<string> words = parseInput(line);
-   string command = "";
+  vector<string> words = parseInput(line);
+  string command = "";
   string currentWord = text;
   string previousWord = "";
   if(!words.empty())
@@ -240,40 +241,78 @@ char** my_completion(const char*text, int start, int end){
   {
     previousWord = words[words.size()-2];
   }
-  if(!args.empty()){
-    auto it = completions.find(args[0]);
-    if(it != completions.end() && start>0){
-    string compLine = rl_line_buffer;
-      string compPoint = to_string(rl_point);
-      string cmd =  
-      "COMP_LINE=\"" + compLine + "\" "
-      "COMP_POINT=\"" + compPoint + "\" "
-      "\"" + it->second + "\" "
-      "\"" + command + "\" "
-      "\"" + currentWord + "\" "
-      "\"" + previousWord + "\"";
-      FILE* pipe = popen(cmd.c_str(), "r");
-      if(pipe){
-        char buffer[1024];
-        if(fgets(buffer,sizeof(buffer),pipe)){
-          string completions = buffer;
-          while (!completions.empty() &&
-                (completions.back() == '\n' ||
-                 completions.back() == '\r'))
-          {
-            completions.pop_back();
-          }
-          if (completions.rfind(currentWord, 0) == 0) 
-          {
-            string suffix = completions.substr(currentWord.size());
-            rl_insert_text(suffix.c_str());
-            rl_insert_text(" ");
-            rl_redisplay();
-}
-        }
-        pclose(pipe);
+  if(!args.empty())
+  {
+    string cmdName  = args[0];
+    auto it = completions.end();
+    for(auto &p : completions){
+      if(command.rfind(p.first,0) ==0){
+        it = completions.find(p.first);
+        break;
       }
-      return nullptr;
+    }
+    if(it != completions.end())
+    {
+      string compLine  = rl_line_buffer;
+      string compPoint = to_string(rl_point);
+      string cmd =
+        "COMP_LINE=\"" + compLine + "\" "
+        "COMP_POINT=\"" + compPoint + "\" "
+        "\"" + it->second + "\" "
+        "\"" + command + "\" "
+        "\"" + currentWord + "\" "
+        "\"" + previousWord + "\"";
+
+        FILE* pipe = popen(cmd.c_str(), "r");
+        if(pipe)
+        {
+          vector<string> candidates;
+          char buffer[1024];
+          while(fgets(buffer,sizeof(buffer),pipe)){
+            string s = buffer;
+            while(!s.empty() &&
+                   (s.back()=='\n' || s.back()=='\r')) {
+                  s.pop_back();
+                }
+                if(!s.empty())
+                   candidates.push_back(s);
+            }
+            sort(candidates.begin(), candidates.end());
+            if(candidates.size() == 1){
+              string completion = candidates[0];
+              
+              rl_point -= currentWord.size();
+              rl_insert_text(completion.c_str());
+              rl_insert_text("");
+              rl_redisplay();
+              
+            }  
+            else if(candidates.size() >1){
+              if(lastWord == currentWord){
+                tabCount++;
+              }
+              else{
+                lastWord = currentWord;
+                tabCount = 1;
+              }
+              if(tabCount == 1){
+                cout<< '\a';
+                cout.flush();
+              }
+              else{
+                cout<<'\n';
+                for(auto &c : candidates){
+                  cout<< c << " "; 
+                }
+                cout << '\n';
+                rl_on_new_line();
+                rl_redisplay();
+                tabCount = 0; 
+              }
+            }
+            pclose(pipe);
+        }
+        return nullptr;
     }
   }
   (void)start;
@@ -303,46 +342,27 @@ char** my_completion(const char*text, int start, int end){
     return nullptr;
   } 
   string prefix = text;
-  vector<string> matches = getMatches(prefix);
+  vector<string> matches = getFileMatches(prefix);
   if(matches.empty()){
     return nullptr;
   }
   if(matches.size() ==1){
-    rl_completion_append_character = ' ';
-    return rl_completion_matches(text,command_generator);
-  }
-  string lcp = longestCommonPrefix(matches);
-  if(lcp.length()> prefix.length()){
-    rl_line_buffer[0] = '\0';
-    rl_point = 0;
-    rl_end = 0;
-    rl_insert_text(lcp.c_str());
+    string suffix  = matches[0].substr(strlen(text));
+    rl_insert_text(suffix.c_str());
+    if(matches[0].back() != '/'){
+      rl_insert_text(" ");
+    }
     rl_redisplay();
     return nullptr;
   }
-  static string previousPrefix = "";
-  static int tabPresses = 0;
-  if(previousPrefix == prefix){
-    tabPresses++;
-  }
-  else{
-    previousPrefix = prefix;
-    tabPresses = 1;
-  }
-  if(tabPresses == 1 ){
-    cout << '\a';
-    cout.flush();
+  string lcp = longestCommonPrefix(matches);
+  if(lcp.size()> strlen(text)){
+    string suffix = lcp.substr(prefix.length());
+    rl_insert_text(suffix.c_str());
+    rl_redisplay();
     return nullptr;
   }
-  cout << '\n';
-  for(string s : matches){
-    cout << s << "  ";
-  }
-  cout<< '\n';
-  rl_on_new_line();
-  rl_redisplay();
-  tabPresses = 0;
-  return nullptr;
+  return nullptr; 
 }
 int main()
 {
