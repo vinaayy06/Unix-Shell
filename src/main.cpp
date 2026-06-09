@@ -13,6 +13,7 @@
 #include <dirent.h>
 #include <cstring>
 #include<map>
+#include<iomanip>
 using namespace std;
 map<string, string> completions;
 vector<string> parseInput(string input){
@@ -226,165 +227,177 @@ vector<string> getFileMatches(string input){
 }
 static string lastWord = "";
 static int tabCount = 0;
+static int jobCounter = 0;
+struct Job {
+  int number;
+  pid_t pid;
+  string command;
+  string status;
+};
+static vector<Job> jobs;
 char** my_completion(const char*text, int start, int end){
-  string line  = rl_line_buffer;
-  vector<string> args = parseInput(line);
+  rl_attempted_completion_over = 1;
+  string line = rl_line_buffer;
   vector<string> words = parseInput(line);
   string command = "";
   string currentWord = text;
   string previousWord = "";
-  if(!words.empty())
-  {
-    command = words[0];
-  }
-  if(words.size() >= 2)
-  {
-    previousWord = words[words.size()-2];
-  }
-  if(!args.empty())
-  {
-    string cmdName  = args[0];
+  if(!words.empty()) command = words[0];
+  if(words.size() >= 2) previousWord = words[words.size()-2];
+  if(!words.empty()){
     auto it = completions.end();
     for(auto &p : completions){
-      if(command.rfind(p.first,0) ==0){
-        it = completions.find(p.first);
-        break;
-      }
+      if(command.rfind(p.first,0) == 0){ it = completions.find(p.first); break; }
     }
-    if(it != completions.end())
-    {
-      string compLine  = rl_line_buffer;
-      string compPoint = to_string(rl_point);
+    if(it != completions.end()){
       string cmd =
-        "COMP_LINE=\"" + compLine + "\" "
-        "COMP_POINT=\"" + compPoint + "\" "
+        "COMP_LINE=\"" + string(rl_line_buffer) + "\" "
+        "COMP_POINT=\"" + to_string(rl_point) + "\" "
         "\"" + it->second + "\" "
         "\"" + command + "\" "
         "\"" + currentWord + "\" "
         "\"" + previousWord + "\"";
-
-        FILE* pipe = popen(cmd.c_str(), "r");
-        if(pipe)
-        {
-          vector<string> candidates;
-          char buffer[1024];
-          while(fgets(buffer,sizeof(buffer),pipe)){
-            string s = buffer;
-            while(!s.empty() &&
-                   (s.back()=='\n' || s.back()=='\r')) {
-                  s.pop_back();
-                }
-                if(!s.empty())
-                   candidates.push_back(s);
-            }
-            sort(candidates.begin(), candidates.end());
-            if(candidates.size() == 1){
-              string completion = candidates[0];
-              rl_delete_text(
-                  rl_point - currentWord.size(),
-                  rl_point
-              );
-              rl_point -= currentWord.size();
-              rl_insert_text(completion.c_str());
-              rl_insert_text(" ");
-              rl_redisplay();
-              
-            }  
-            else if(candidates.size() >1){
-              if(lastWord == currentWord){
-                tabCount++;
-              }
-              else{
-                lastWord = currentWord;
-                tabCount = 1;
-              }
-              if(tabCount == 1){
-                cout<< '\a';
-                cout.flush();
-              }
-              else{
-                cout<<'\n';
-                for(auto &c : candidates){
-                  cout<< c << "  "; 
-                }
-                cout << '\n';
-                rl_on_new_line();
-                rl_redisplay();
-                tabCount = 0; 
-              }
-            }
-            pclose(pipe);
+      FILE* pipe = popen(cmd.c_str(), "r");
+      if(pipe){
+        vector<string> candidates;
+        char buffer[1024];
+        while(fgets(buffer, sizeof(buffer), pipe)){
+          string s = buffer;
+          while(!s.empty() && (s.back()=='\n' || s.back()=='\r')) s.pop_back();
+          if(!s.empty()) candidates.push_back(s);
         }
-        return nullptr;
+        pclose(pipe);
+        vector<string> filtered;
+        for(auto& c : candidates)
+          if(c.rfind(currentWord,0)==0) filtered.push_back(c);
+        if(!filtered.empty()) candidates = filtered;
+        sort(candidates.begin(), candidates.end());
+        if(candidates.size() == 1){
+          int sp = rl_point - currentWord.size();
+          rl_delete_text(sp, rl_point); rl_point = sp;
+          rl_insert_text(candidates[0].c_str());
+          rl_insert_text(" ");
+          rl_redisplay();
+          tabCount = 0; lastWord.clear();
+        } else if(candidates.size() > 1){
+          string lcp = longestCommonPrefix(candidates);
+          if(lcp.size() > currentWord.size()){
+            int sp = rl_point - currentWord.size();
+            rl_delete_text(sp, rl_point); rl_point = sp;
+            rl_insert_text(lcp.c_str());
+            rl_redisplay(); tabCount = 0;
+          } else {
+            if(lastWord == currentWord) tabCount++;
+            else { lastWord = currentWord; tabCount = 1; }
+            if(tabCount == 1){ cout << '\a'; cout.flush(); }
+            else {
+              cout << '\n';
+              for(auto& c : candidates) cout << c << " ";
+              cout << '\n';
+              rl_on_new_line(); rl_redisplay(); tabCount = 0;
+            }
+          }
+        }
+      }
+      return nullptr;
     }
   }
-  (void)start;
-  (void)end;
   if(start > 0){
-    vector<string> files;
-    DIR* dp = opendir(".");
-    if(dp){
-      struct dirent* entry;
-      while((entry = readdir(dp)) != nullptr) {
-        string name = entry->d_name;
-        if(name == "." || name == "..")
-          continue;
-        files.push_back(name);
-      }
-      closedir(dp);
+    vector<string> matches = getFileMatches(currentWord);
+    if(matches.empty()) return nullptr;
+    if(matches.size() == 1){
+      int sp = rl_point - currentWord.size();
+      rl_delete_text(sp, rl_point); rl_point = sp;
+      rl_insert_text(matches[0].c_str());
+      if(matches[0].back() != '/') rl_insert_text(" ");
+      rl_redisplay();
+      return nullptr;
     }
-    if(files.size() == 1){
-      struct stat st;
-      if(stat(files[0].c_str(),&st) == 0 && S_ISDIR(st.st_mode)){
-        rl_insert_text((files[0] + "/").c_str());
-      }
-      else{
-        rl_insert_text((files[0] + " ").c_str());
-      }
+    string lcp = longestCommonPrefix(matches);
+    if(lcp.size() > currentWord.size()){
+      int sp = rl_point - currentWord.size();
+      rl_delete_text(sp, rl_point); rl_point = sp;
+      rl_insert_text(lcp.c_str());
+      rl_redisplay(); tabCount = 0; lastWord.clear();
+      return nullptr;
     }
-    return nullptr;
-  } 
-  string prefix = text;
-  vector<string> matches = getMatches(prefix);
-  if(matches.empty()){
+    if(lastWord == currentWord) tabCount++;
+    else { lastWord = currentWord; tabCount = 1; }
+    if(tabCount == 1){ cout << '\a'; cout.flush(); }
+    else {
+      cout << '\n';
+      for(auto& m : matches) cout << m << "  ";
+      cout << '\n';
+      rl_on_new_line(); rl_redisplay(); tabCount = 0;
+    }
     return nullptr;
   }
-  if(matches.size() ==1){
-    string suffix  = matches[0].substr(strlen(text));
+  vector<string> matches = getMatches(currentWord);
+  if(matches.empty()) return nullptr;
+  if(matches.size() == 1){
+    string suffix = matches[0].substr(strlen(text));
     rl_insert_text(suffix.c_str());
     rl_insert_text(" ");
     rl_redisplay();
     return nullptr;
   }
   string lcp = longestCommonPrefix(matches);
-  if(lcp.size()> strlen(text)){
-    string suffix = lcp.substr(prefix.length());
-    rl_insert_text(suffix.c_str());
-    rl_redisplay();
-    return nullptr;
+  if(lcp.size() > currentWord.size()){
+    int sp = rl_point - currentWord.size();
+    rl_delete_text(sp, rl_point); rl_point = sp;
+    rl_insert_text(lcp.c_str());
+    rl_redisplay(); tabCount = 0; lastWord.clear();
   }
-  if(lastWord == currentWord){
-    tabCount++;
+  if(lastWord == currentWord) tabCount++;
+  else { lastWord = currentWord; tabCount = 1; }
+  if(tabCount == 1){ cout << '\a'; cout.flush(); }
+  else {
+    cout << '\n';
+    for(auto& m : matches) cout << m << " ";
+    cout << '\n';
+    rl_on_new_line(); rl_redisplay(); tabCount = 0;
   }
-  else{
-    lastWord = currentWord;
-    tabCount = 1;
-  }
-  if(tabCount == 1){
-    cout<< '\a';
-    cout.flush();
-  }
-  else{
-    cout<<'\n';
-    for(auto&m : matches){
-      cout<< m << " ";
+  return nullptr;
+}
+void reapJobs(){
+  for(auto& j: jobs){
+    if(j.status == "Running"){
+      int wstatus;
+      pid_t result = waitpid(j.pid, &wstatus,WNOHANG);
+      if(result == j.pid && WIFEXITED(wstatus)){
+        j.status = "Done";
+        if(j.command.size() >=2 && j.command.substr(j.command.size() -2) == " &"){
+          j.command = j.command.substr(0, j.command.size()-2);
+        }
+      }
     }
-    cout<<'\n';
-    rl_on_new_line();
-    rl_redisplay();
-    tabCount = 0;
   }
-  return nullptr; 
+  int total = jobs.size();
+  for(int i=0;i<total ;i++){
+    if(jobs[i].status == "Done"){
+      char marker;
+      if(i == total -1){
+        marker = '+';
+      }
+      else if(i== total -2){
+        marker = '-';
+      }
+      else{
+        marker = ' ';
+      }
+      cout << "[" << jobs[i].number << "]"
+           << marker << "  "
+           << left << setw(24) << jobs[i].status
+           << jobs[i].command << endl;
+    }     
+  }
+  vector<Job> stillRunning;
+  for(auto& j : jobs){
+    if(j.status == "Running"){
+      stillRunning.push_back(j);
+    }
+  }
+  jobs = stillRunning;
 }
 int main()
 {
@@ -398,11 +411,13 @@ int main()
   built_in.push_back("pwd");
   built_in.push_back("cd");
   built_in.push_back("complete");
+  built_in.push_back("jobs");
 
   cout << unitbuf;
   cerr << unitbuf;
   while (true)
   {
+    reapJobs();
     char* line  = readline("$ ");
     if(line  == nullptr){
       break;
@@ -502,6 +517,42 @@ int main()
       getcwd(cwd,sizeof(cwd));
       cout<<cwd<<endl;
     }
+    else if(input == "jobs"){
+      for(auto& j : jobs){
+        int wstatus;
+        pid_t result = waitpid(j.pid, &wstatus, WNOHANG);
+        if(result == j.pid && WIFEXITED(wstatus)){
+          j.status = "Done";
+          if(j.command.size() >= 2 && j.command.substr(j.command.size()-2) == " &"){
+            j.command = j.command.substr(0, j.command.size()-2);
+          }
+        }
+      }
+      int total = jobs.size();
+      for(int i=0;i<total;i++){
+        char marker;
+        if(i == total -1){
+          marker = '+';
+        }
+        else if(i == total -2){
+          marker = '-';
+        }
+        else{
+          marker = ' ';
+        }
+        cout << "[" << jobs[i].number << "]"
+             << marker << "  "
+             << left << setw(24) << jobs[i].status
+             << jobs[i].command << endl;
+      }
+      vector<Job> stillRunning;
+      for(auto& j : jobs){
+        if(j.status == "Running"){
+          stillRunning.push_back(j);
+        }
+      }
+      jobs = stillRunning;
+    }
     else if(input.rfind("cd " , 0) == 0){
       string directory = input.substr(3);
       if(directory == "~"){
@@ -551,6 +602,10 @@ int main()
         string scriptPath = args[2];
         string command = args[3];
         completions[command] = scriptPath;
+      }
+      else if(args.size() >=3 && args[1] == "-r"){
+        string command = args[2];
+        completions.erase(command);
       }
       else if(args.size()>=3 && args[1] =="-p"){
         string command = args[2];
@@ -609,6 +664,12 @@ int main()
       if(commands.empty()){
         continue;
       }
+      bool background = false;
+      if(!commands.empty() && commands.back() == "&"){
+        background = true;
+        commands.pop_back();
+      }
+      if(commands.empty()) continue;
       pid_t  pid= fork(); // creates two processes
       if(pid == 0){ // child enters here
         if(redirect || appendRedirect){
@@ -649,7 +710,32 @@ int main()
         exit(1);
       }
       else{
-        waitpid(pid,nullptr,0); // Parent shell waits until child finishes.
+        if(background){
+          int newNumber = 1;
+          while(true){
+            bool taken = false;
+            for(auto& j : jobs){
+              if(j.number == newNumber){
+                taken = true;
+                break;
+              }
+            } 
+            if(!taken) break;
+            newNumber++;
+          }
+          jobCounter = newNumber;
+          string cmdStr = "";
+          for(int i=0 ;i<commands.size();i++){
+            if(i>0) cmdStr += " ";
+            cmdStr += commands[i];
+          }
+          cmdStr += " &";
+          jobs.push_back({newNumber,pid,cmdStr,"Running"});
+          cout << "[" << newNumber << "] " << pid << endl;
+        }
+        else{
+          waitpid(pid,nullptr,0);
+        }
       }
     }
 
