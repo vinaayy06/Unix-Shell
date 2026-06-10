@@ -235,6 +235,53 @@ struct Job {
   string status;
 };
 static vector<Job> jobs;
+bool isBuiltin(const string& cmd)
+{
+    return cmd == "echo" ||
+           cmd == "type" ||
+           cmd == "pwd"  ||
+           cmd == "cd"   ||
+           cmd == "exit" ||
+           cmd == "complete";
+}
+void runBuiltin(const vector<string>& args)
+{
+  if(args.empty()) return;
+  if(args[0] == "echo"){
+    for(size_t i=1;i<args.size();i++){
+      if(i>1) cout << " ";
+      cout << args[i];
+    }
+    cout << endl;
+  }
+  else if(args[0] == "type"){
+    string target = args[1];
+    if(target=="echo" ||
+       target=="exit" ||
+       target=="type" ||
+       target=="pwd" ||
+       target=="cd" ||
+       target=="complete")
+    {
+      cout << target
+          << " is a shell builtin"
+          << endl;
+    }
+  }
+}
+vector<string> splitPipeline(const string& input){
+  vector<string> result;
+  string current;
+  stringstream ss(input);
+  while(getline(ss, current, '|')){
+    while(!current.empty() && current.front() == ' ')
+      current.erase(current.begin());
+    while(!current.empty() && current.back() == ' ')
+        current.pop_back();
+    result.push_back(current);
+  }
+  return result;
+}
 char** my_completion(const char*text, int start, int end){
   rl_attempted_completion_over = 1;
   string line = rl_line_buffer;
@@ -430,6 +477,56 @@ int main()
     if(input.empty()){ //agr enter type krde without typing  so prgm restart loop
       continue;
     }
+    size_t pipePos = input.find('|');
+    if(input.find('|') != string::npos){
+      vector<string> pipeline = splitPipeline(input);
+      int n = pipeline.size();
+      vector<pid_t> pids;
+      int prevRead = -1;
+      for(int i =0;i<n;i++){
+        vector<string> argsVec = parseInput(pipeline[i]);
+        int fd[2];
+        if(i != n-1){
+          pipe(fd);
+        }
+        pid_t pid = fork();
+        if(pid ==0){
+          if(prevRead != -1){
+            dup2(prevRead, STDIN_FILENO);
+          }
+          if(i != n - 1){
+            dup2(fd[1], STDOUT_FILENO);
+          }
+          if(prevRead != -1){
+            close(prevRead);
+          }
+          if(i != n - 1){
+            close(fd[0]);
+            close(fd[1]);
+          }
+          if(isBuiltin(argsVec[0])){
+            runBuiltin(argsVec);
+            exit(0);
+          }
+          vector<char*> args;
+          for(auto &s : argsVec)
+            args.push_back(&s[0]);
+           args.push_back(nullptr);
+          execvp(args[0], args.data());
+          exit(1);
+        } 
+        pids.push_back(pid);
+        if(prevRead != -1)
+          close(prevRead);
+        if(i != n - 1){
+          close(fd[1]);
+          prevRead = fd[0];
+        } 
+      }
+      for(pid_t pid : pids)
+        waitpid(pid, nullptr, 0);
+      continue;
+    }
     if (input == "exit" || input == "exit 0") //  shell stop
     {
       break;
@@ -623,50 +720,8 @@ int main()
         }
       }
     }
-    else
-    {
+    else{
       vector<string> commands = parseInput(input);
-      size_t pipePos = input.find('|');
-      if(pipePos != string:: npos){
-        string leftCmd  = input.substr(0,pipePos);
-        string rightCmd = input.substr(pipePos + 1);
-        vector<string> leftArgs = parseInput(leftCmd);
-        vector<string> rightArgs = parseInput(rightCmd);
-        int fd[2];
-        pipe(fd);
-        pid_t p1 = fork();
-        if(p1 ==0){
-          dup2(fd[1], STDOUT_FILENO);
-          close(fd[0]);
-          close(fd[1]);
-          vector<char*> args;
-          for(auto &s : leftArgs){
-            args.push_back(&s[0]);
-          }
-          args.push_back(nullptr);
-          execvp(args[0] ,args.data());
-          exit(1);
-        } 
-        pid_t p2 = fork();
-        if(p2 == 0){
-          dup2(fd[0] , STDIN_FILENO);
-          close(fd[0]);
-          close(fd[1]);
-          vector<char*> args ;
-          for(auto &s : rightArgs){
-            args.push_back(&s[0]);
-          }
-          args.push_back(nullptr);
-          execvp(args[0],args.data());
-          exit(1);
-        }
-        close(fd[0]);
-        close(fd[1]);
-
-        waitpid(p1, nullptr, 0);
-        waitpid(p2, nullptr, 0);
-        continue;
-      }
       string outputFile = "";
       string errorfile = "";
       bool redirect  = false;
