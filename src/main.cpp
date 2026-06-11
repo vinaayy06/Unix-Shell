@@ -14,8 +14,10 @@
 #include <cstring>
 #include<map>
 #include<iomanip>
+#include<fstream>
 using namespace std;
 map<string, string> completions;
+map<string, string> shellVars;
 vector<string> parseInput(string input){
   vector<string> result;
   string current = "";
@@ -242,7 +244,10 @@ bool isBuiltin(const string& cmd)
            cmd == "pwd"  ||
            cmd == "cd"   ||
            cmd == "exit" ||
-           cmd == "complete";
+           cmd == "complete"||
+           cmd == "jobs"||
+           cmd == "history"||
+           cmd == "declare";
 }
 void runBuiltin(const vector<string>& args)
 {
@@ -261,7 +266,10 @@ void runBuiltin(const vector<string>& args)
        target=="type" ||
        target=="pwd" ||
        target=="cd" ||
-       target=="complete")
+       target=="complete"||
+       target=="jobs" ||
+       target=="history"||
+       target=="declare" )
     {
       cout << target
           << " is a shell builtin"
@@ -446,6 +454,44 @@ void reapJobs(){
   }
   jobs = stillRunning;
 }
+vector<string> commandHistory;
+
+string expandVars(const string& input){
+  string result;
+  int i = 0;
+  while(i < (int)input.size()){
+    if(input[i] == '$' && i+1 < (int)input.size()){
+      if(input[i+1] == '{'){
+        i += 2; 
+        string name;
+        while(i < (int)input.size() && input[i] != '}'){
+          name += input[i++];
+        }
+        if(i < (int)input.size()) i++; 
+        auto it = shellVars.find(name);
+        if(it != shellVars.end())
+        result += it->second;
+      }
+      else if(isalpha(input[i+1]) || input[i+1] == '_'){
+        i++;
+        string name;
+        while(i < (int)input.size() && (isalnum(input[i]) || input[i] == '_')){
+          name += input[i++];
+        }
+        auto it = shellVars.find(name);
+        if(it != shellVars.end())
+          result += it->second;
+      }
+      else{
+        result += input[i++];
+      }
+    }
+    else{
+      result += input[i++];
+    }   
+  }
+  return result;
+}
 int main()
 {
   rl_attempted_completion_function = my_completion;
@@ -459,9 +505,21 @@ int main()
   built_in.push_back("cd");
   built_in.push_back("complete");
   built_in.push_back("jobs");
+  built_in.push_back("history");
+  built_in.push_back("declare");
 
   cout << unitbuf;
   cerr << unitbuf;
+  int historyLoadedCount = 0;
+  char* histfile = getenv("HISTFILE");
+  if(histfile != nullptr){
+    read_history(histfile);
+    HIST_ENTRY **hist = history_list();
+    if(hist){
+      while(hist[historyLoadedCount] != nullptr)
+        historyLoadedCount++;
+    }
+  }
   while (true)
   {
     reapJobs();
@@ -477,6 +535,7 @@ int main()
     if(input.empty()){ //agr enter type krde without typing  so prgm restart loop
       continue;
     }
+    input = expandVars(input);  
     size_t pipePos = input.find('|');
     if(input.find('|') != string::npos){
       vector<string> pipeline = splitPipeline(input);
@@ -529,6 +588,18 @@ int main()
     }
     if (input == "exit" || input == "exit 0") //  shell stop
     {
+      char* histfile = getenv("HISTFILE");
+      if(histfile != nullptr){
+        HIST_ENTRY **hist = history_list();
+        int total = 0;
+        if(hist) while(hist[total] != nullptr) total++;
+        int newEntries = total - historyLoadedCount;
+        if(newEntries > 0)
+          append_history(newEntries, histfile);
+        }
+        else{
+          append_history(0,histfile);
+        }
       break;
     }
     else if (input.rfind("echo ", 0) == 0) // check first 5 letter
@@ -650,6 +721,62 @@ int main()
       }
       jobs = stillRunning;
     }
+    else if(input.rfind("history" ,0) == 0){
+      vector<string> args = parseInput(input);
+      if(args.size() ==3 && args[1] == "-r"){
+        string filePath = args[2];
+        ifstream file(filePath);
+        string line;
+        while(getline(file,line)){
+          if(!line.empty()){
+            add_history(line.c_str());
+          }
+        }
+      }
+      else if(args.size() == 3 && args[1] == "-w"){
+        string filePath = args[2];
+        ofstream file(filePath);         
+        HIST_ENTRY **hist = history_list();
+        if(hist){
+          for(int i = 0; hist[i] != nullptr; i++){
+              file << hist[i]->line << "\n";
+          }
+        }
+      }
+      else if(args.size() == 3 && args[1] == "-a"){
+        string filePath = args[2];
+        static int lastWritten = 0;
+        ofstream file(filePath, ios:: app);
+        HIST_ENTRY **hist = history_list();
+        if(hist){
+          int total = 0;
+          while(hist[total] != nullptr) total++;
+          for(int i = lastWritten; i<total;i++){
+            file << hist[i] ->line << "\n";
+          }
+          lastWritten = total;
+        }
+      }
+      else{
+        HIST_ENTRY **hist = history_list();
+        if(hist){
+          int total = 0;
+          while(hist[total] != nullptr){
+            total++;
+          }
+          int start = 0;
+          if(args.size() == 2){
+            int n = stoi(args[1]);
+            if(n<total){
+              start = total - n;
+            }
+          }
+          for(int i= start ; i<total; i++){
+            cout<<setw(5) << i+1 << " "<<hist[i]->line<<endl;
+          }
+        }
+      }
+    }
     else if(input.rfind("cd " , 0) == 0){
       string directory = input.substr(3);
       if(directory == "~"){
@@ -664,7 +791,7 @@ int main()
 
       }
     }
-     else if (input.rfind("type ", 0) == 0)
+    else if (input.rfind("type ", 0) == 0)
     {
       string target = input.substr(5);
       if (find(built_in.begin(), built_in.end(), target) != built_in.end()) //  agr result is not end
@@ -717,6 +844,34 @@ int main()
                << "' "
                << command
                << endl;
+        }
+      }
+    }
+    else if(input.rfind("declare", 0) == 0){
+      vector<string> args = parseInput(input);
+      if(args.size() ==2 && args[1].find('=') != string::npos){
+        size_t eq = args[1].find('=');
+        string name = args[1].substr(0, eq);
+        string value = args[1].substr(eq + 1);
+        bool valid  = !name.empty() && (isalpha(name[0]) || name[0] == '_');
+        for(int i = 1; valid && i < name.size(); i++){
+          if(!isalnum(name[i]) && name[i] != '_') valid = false;
+        }
+        if(!valid){
+          cout << "declare: `" << args[1] << "': not a valid identifier" << endl;
+        }
+        else{
+          shellVars[name] = value;
+        }
+      }
+      else if(args.size() == 3 && args[1] == "-p"){
+        string varName = args[2];
+        auto it = shellVars.find(varName);
+        if(it == shellVars.end()){
+          cout << "declare: " << varName << ": not found" << endl;
+        }
+        else{
+          cout << "declare -- " << varName << "=\"" << it->second << "\"" << endl;
         }
       }
     }
