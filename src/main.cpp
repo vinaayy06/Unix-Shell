@@ -532,7 +532,7 @@ int main()
       add_history(line);
     }
     free(line);
-    if(input.empty()){ //agr enter type krde without typing  so prgm restart loop
+    if(input.empty()){ // if enter is pressed without any input, restart the loop
       continue;
     }
     input = expandVars(input);  
@@ -794,13 +794,13 @@ int main()
     else if (input.rfind("type ", 0) == 0)
     {
       string target = input.substr(5);
-      if (find(built_in.begin(), built_in.end(), target) != built_in.end()) //  agr result is not end
+      if (find(built_in.begin(), built_in.end(), target) != built_in.end())// if the command is found in builtins list
       {
         cout << target << " is a shell builtin" << endl;
       }
       else
       {
-       bool found = false; // mtlb abhi tk nhi mila
+       bool found = false; // not found yet
        char* path_ptr = getenv("PATH"); // os give  path value
        if(path_ptr != nullptr){
           string path_env(path_ptr); // convert to string
