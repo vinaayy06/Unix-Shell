@@ -1,43 +1,90 @@
 # Shell
 
-I never really thought about what happens when you type a 
-command and hit enter. It just... works. Until you try to 
-build one yourself.
+A Unix-like shell built from scratch in C++ with pipelines, job control, I/O redirection, persistent history, and tab completion.
 
-Took up the CodeCrafters shell challenge to find out. Ended 
-up spending weeks inside fork(), exec(), pipes, and file 
-descriptors — the stuff that's been running silently under 
-every terminal session I've ever had.
+## Features
 
-## What it does
+- **Command execution** — runs external commands via `fork()` + `execvp()`
+- **Pipelines** — two-command pipes using `pipe()`, `fork()`, and `dup2()`
+- **Background jobs** — run commands with `&`, track with a `jobs` builtin
+- **Job control** — job number recycling, async reaping via `waitpid(WNOHANG)`
+- **I/O redirection** — `>`, `<`, `>>` support
+- **Shell history** — persistent history with HISTFILE, `history`, `history -r`, `history -w`, `history -a`
+- **Tab completion** — custom TAB completion using `complete -C` external completer scripts with longest-common-prefix logic and bell-on-first / list-on-second behavior
+- **Variable expansion** — `declare` builtin and `expandVars()` for parameter expansion
+- **GNU Readline** — full readline integration for line editing
 
-- Executes external commands
-- Pipes two commands together — `ls | grep main` actually works
-- Handles input/output redirection (`>`, `<`, `>>`)
-- Runs commands in the background with `&`
-- Tracks background jobs and cleans them up properly
-- Persists command history across sessions
-- TAB completion with longest-common-prefix logic
-- Variable declaration and expansion via a `declare` builtin
+## Builtins
 
-## Build
+| Command | Description |
+|---|---|
+| `cd` | Change directory |
+| `pwd` | Print working directory |
+| `echo` | Print arguments |
+| `export` | Set environment variables |
+| `declare` | Declare shell variables |
+| `jobs` | List background jobs |
+| `history` | Show/manage command history |
+| `exit` | Exit the shell |
+
+## Installation
+
+**Requirements:** Linux, g++, GNU Readline
 
 ```bash
-# You'll need GNU Readline
-sudo apt install libreadline-dev
+# Clone the repo
+git clone https://github.com/vinaayy06/shell.git
+cd shell
 
-# Compile
-g++ -o shell src/main.cpp -lreadline
+# Install readline (if not already installed)
+sudo apt-get install libreadline-dev
+
+# Build
+g++ -std=c++17 src/*.cpp -lreadline -o shell
 
 # Run
 ./shell
 ```
 
-## Honest reflection
+## Usage
 
-The hardest parts weren't the features. It was debugging 
-what I didn't know I didn't know — zombie processes, broken 
-pipes, completion edge cases. Those bugs taught me more than 
-any lecture did.
+```bash
+# Basic command
+$ ls -la
 
-Still building. HTTP server is next.
+# Pipeline
+$ ls | grep .cpp
+
+# Background job
+$ sleep 10 &
+[1] 12345
+
+# Check jobs
+$ jobs
+[1]+ Running    sleep 10
+
+# Redirect output
+$ echo hello > out.txt
+
+# Variable declaration
+$ declare x=42
+$ echo $x
+42
+
+# History
+$ history
+$ history -w   # write to HISTFILE
+$ history -r   # read from HISTFILE
+```
+
+## Technical Details
+
+- Process management: `fork()`, `exec()`, `waitpid()`
+- IPC: `pipe()`, `dup2()` for pipeline chaining
+- Signal handling: background job reaping with `WNOHANG`
+- Readline integration via GNU Readline library
+- Tab completion via external completer scripts (`complete -C`)
+
+## Languages
+
+C++ 100%
