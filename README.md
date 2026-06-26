@@ -1,4 +1,4 @@
-# Shell
+# Unix-Shell
 
 A Unix-like shell built from scratch in C++ with pipelines, job control, I/O redirection, persistent history, and tab completion.
 
